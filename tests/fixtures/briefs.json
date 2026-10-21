@@ -1,0 +1,153 @@
+[
+  {
+    "client": "Northwind Coffee",
+    "product": "Single-origin espresso beans",
+    "audience": "Home espresso enthusiasts aged 25-45",
+    "goal": "Drive first-time online orders",
+    "tone": "Warm and craft-focused",
+    "channels": ["instagram", "email"],
+    "must_include": ["free shipping over $40"],
+    "avoid": ["health claims"],
+    "raw_text": "We want warm, crafty copy for our new espresso beans. Mention free shipping over $40."
+  },
+  {
+    "client": "Lumen Yoga Studio",
+    "product": "Beginner 8-week yoga course",
+    "audience": "Adults new to yoga",
+    "goal": "Fill the next course cohort",
+    "tone": "Calm and encouraging",
+    "channels": ["facebook"],
+    "must_include": ["starts in March"],
+    "avoid": ["medical claims"]
+  },
+  {
+    "client": "Trailhead Outfitters",
+    "product": "Hiking boots",
+    "audience": "Weekend hikers",
+    "goal": "Increase seasonal sales",
+    "tone": "Adventurous",
+    "channels": ["instagram", "youtube"],
+    "must_include": ["vibram sole"],
+    "avoid": ["waterproof claims we cannot prove"]
+  },
+  {
+    "client": "Bright Books",
+    "product": "Children's picture book subscription",
+    "audience": "Parents of children aged 4-8",
+    "goal": "Increase monthly subscriptions",
+    "tone": "Playful and warm",
+    "channels": ["facebook", "email"],
+    "must_include": ["cancel anytime"],
+    "avoid": ["educational outcome promises"]
+  },
+  {
+    "client": "GreenLeaf Landscaping",
+    "product": "Seasonal yard maintenance plan",
+    "audience": "Suburban homeowners",
+    "goal": "Generate local leads",
+    "tone": "Friendly and practical",
+    "channels": ["google_ads"],
+    "must_include": ["licensed and insured"],
+    "avoid": ["pesticide claims"]
+  },
+  {
+    "client": "Pixel Forge",
+    "product": "Indie game 'Skyward'",
+    "audience": "PC gamers aged 16-30",
+    "goal": "Boost wishlist adds",
+    "tone": "High-energy",
+    "channels": ["youtube", "tiktok"],
+    "must_include": ["wishlist on Steam"],
+    "avoid": ["false release dates"]
+  },
+  {
+    "client": "Hearth & Home",
+    "product": "Ceramic cookware set",
+    "audience": "Home cooks",
+    "goal": "Increase online conversions",
+    "tone": "Clean and modern",
+    "channels": ["instagram"],
+    "must_include": ["oven safe to 450F"],
+    "avoid": ["nonstick health claims"]
+  },
+  {
+    "client": "Clearview Windows",
+    "product": "Residential window cleaning",
+    "audience": "Homeowners with two-story houses",
+    "goal": "Book free estimates",
+    "tone": "Professional and reassuring",
+    "channels": ["google_ads", "facebook"],
+    "must_include": ["free estimates"],
+    "avoid": ["unverified safety promises"]
+  },
+  {
+    "client": "Bloom Skincare",
+    "product": "Gentle daily moisturizer",
+    "audience": "Adults with sensitive skin",
+    "goal": "Increase trial samples",
+    "tone": "Soft and honest",
+    "channels": ["instagram", "email"],
+    "must_include": ["fragrance free"],
+    "avoid": ["medical or dermatological claims"]
+  },
+  {
+    "client": "Summit Financial Coaching",
+    "product": "Budgeting course",
+    "audience": "Young professionals",
+    "goal": "Increase course sign-ups",
+    "tone": "Supportive and clear",
+    "channels": ["linkedin", "email"],
+    "must_include": ["money-back policy"],
+    "avoid": ["income guarantees"]
+  },
+  {
+    "client": "Bramble Farm",
+    "product": "Seasonal produce box",
+    "audience": "Local families",
+    "goal": "Increase weekly box subscriptions",
+    "tone": "Down-to-earth",
+    "channels": ["facebook"],
+    "must_include": ["local delivery"],
+    "avoid": ["organic certification claims unless provided"]
+  },
+  {
+    "client": "Nova Fitness",
+    "product": "At-home strength app",
+    "audience": "Beginners building a routine",
+    "goal": "Increase free-trial starts",
+    "tone": "Encouraging",
+    "channels": ["instagram", "tiktok"],
+    "must_include": ["no equipment needed"],
+    "avoid": ["body transformation promises"]
+  },
+  {
+    "client": "Paperlane Stationery",
+    "product": "Refillable notebook",
+    "audience": "Students and journalers",
+    "goal": "Launch preorders",
+    "tone": "Minimal and charming",
+    "channels": ["instagram"],
+    "must_include": ["refillable pages"],
+    "avoid": ["sustainability claims without proof"]
+  },
+  {
+    "client": "Copper Kettle Inn",
+    "product": "Weekend bed-and-breakfast stay",
+    "audience": "Couples seeking short getaways",
+    "goal": "Increase direct bookings",
+    "tone": "Cozy and inviting",
+    "channels": ["email", "facebook"],
+    "must_include": ["breakfast included"],
+    "avoid": ["star-rating claims"]
+  },
+  {
+    "client": "Verge Software",
+    "product": "Team task manager",
+    "audience": "Small remote teams",
+    "goal": "Increase trial sign-ups",
+    "tone": "Confident and concise",
+    "channels": ["linkedin"],
+    "must_include": ["14-day trial"],
+    "avoid": ["productivity guarantees"]
+  }
+]

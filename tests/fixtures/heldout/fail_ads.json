@@ -1,0 +1,47 @@
+[
+  {
+    "ad": {
+      "headline": "Cures everything, guaranteed",
+      "body": "This tea cures everything and comes guaranteed.",
+      "cta": "Buy now",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["cures", "guaranteed"]
+  },
+  {
+    "ad": {
+      "headline": "Miracle instant results",
+      "body": "A miracle formula for instant results.",
+      "cta": "Try it",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["miracle", "instant results"]
+  },
+  {
+    "ad": {
+      "headline": "No side effects, 100% safe",
+      "body": "It is 100% safe with no side effects.",
+      "cta": "Learn more",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["100% safe", "no side effects"]
+  },
+  {
+    "ad": {
+      "headline": "Get rich quick tonight",
+      "body": "A get rich quick scheme for busy people.",
+      "cta": "Join now",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["get rich quick"]
+  },
+  {
+    "ad": {
+      "headline": "Clinically proven, risk-free",
+      "body": "Clinically proven and risk-free to try.",
+      "cta": "Start free",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["clinically proven", "risk-free"]
+  }
+]

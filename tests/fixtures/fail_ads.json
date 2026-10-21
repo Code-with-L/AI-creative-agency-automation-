@@ -1,0 +1,92 @@
+[
+  {
+    "ad": {
+      "headline": "A miracle for your morning",
+      "body": "This blend is a miracle for tired mornings.",
+      "cta": "Try it",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["miracle"]
+  },
+  {
+    "ad": {
+      "headline": "Guaranteed results in one week",
+      "body": "See guaranteed results, or your money back.",
+      "cta": "Start now",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["guaranteed", "guaranteed results"]
+  },
+  {
+    "ad": {
+      "headline": "100% safe and 100% effective",
+      "body": "A formula that is 100% safe and 100% effective.",
+      "cta": "Buy now",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["100% safe", "100% effective"]
+  },
+  {
+    "ad": {
+      "headline": "Risk-free and no side effects",
+      "body": "It is risk-free, with no side effects.",
+      "cta": "Learn more",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["risk-free", "no side effects"]
+  },
+  {
+    "ad": {
+      "headline": "Clinically proven instant results",
+      "body": "Clinically proven for instant results.",
+      "cta": "See the study",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["clinically proven", "instant results"]
+  },
+  {
+    "ad": {
+      "headline": "Cure your fatigue today",
+      "body": "This supplement can cure your fatigue.",
+      "cta": "Order now",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["cure"]
+  },
+  {
+    "ad": {
+      "headline": "Get rich quick with no work required",
+      "body": "A get rich quick plan with no work required.",
+      "cta": "Join free",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["get rich quick", "no work required"]
+  },
+  {
+    "ad": {
+      "headline": "Earn thousands from home",
+      "body": "Earn thousands every month from your sofa.",
+      "cta": "Sign up",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["earn thousands"]
+  },
+  {
+    "ad": {
+      "headline": "FDA approved strength",
+      "body": "An FDA approved formula you can trust.",
+      "cta": "Shop now",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["fda approved"]
+  },
+  {
+    "ad": {
+      "headline": "Guaranteed, guaranteed results",
+      "body": "We guarantee it: guaranteed results, every time.",
+      "cta": "Claim offer",
+      "disclosures": []
+    },
+    "expected_blocklist_hits": ["guarantee", "guaranteed", "guaranteed results"]
+  }
+]

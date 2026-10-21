@@ -1,0 +1,214 @@
+"""Provider-agnostic LLM wrapper (Phase 1).
+
+Design goals:
+* No hardcoded model names or endpoints (see src/config.py).
+* Retries with exponential backoff, 429 handling, and a hard attempt cap.
+* Optional JSON mode with Pydantic validation.
+* A simple daily quota guard that fails gracefully instead of retrying forever.
+* A trace hook recording stage, model, latency and status.
+* Swappable provider: Gemini is implemented; anything else raises explicitly
+  (with a TODO) so we never guess another provider's API shape.
+"""
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Type
+
+import requests
+from pydantic import BaseModel, ValidationError
+
+from . import config as config_mod
+from .config import QuotaState, Settings
+
+
+class LLMError(RuntimeError):
+    """Base class for all LLM wrapper failures."""
+
+
+class QuotaExceeded(LLMError):
+    """Raised when the local daily quota guard blocks a request."""
+
+
+class ProviderError(LLMError):
+    """Raised for provider-side failures that are not retryable."""
+
+
+@dataclass
+class Trace:
+    stage: str
+    model: str
+    provider: str
+    latency_ms: float
+    status: str
+    attempts: int
+    error: Optional[str] = None
+
+
+TraceHook = Callable[[Trace], None]
+
+# Default in-memory trace sink. Pass your own trace_hook, or clear this list.
+traces: List[Trace] = []
+
+
+def default_trace_hook(trace: Trace) -> None:
+    traces.append(trace)
+
+
+def _build_request(
+    settings: Settings, stage: str, system: str, user: str, json_mode: bool
+) -> "tuple[str, str, Dict[str, str], Dict[str, Any]]":
+    model = settings.model_for_stage(stage)
+
+    if settings.provider != "gemini":
+        # TODO: add a Groq / OpenAI-compatible adapter here. We refuse rather
+        # than guess another provider's request shape.
+        raise ProviderError(
+            f"Provider {settings.provider!r} is not implemented yet. "
+            "Add an adapter in src/llm.py."
+        )
+
+    if not model:
+        raise LLMError(
+            f"No model configured for stage {stage!r}. Set LLM_MODEL (shared) "
+            f"or LLM_MODEL_{stage.upper()} (per-stage)."
+        )
+
+    url = settings.endpoint_template.format(model=model)
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": settings.api_key or "",
+    }
+    body: Dict[str, Any] = {
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+    }
+    if system:
+        body["systemInstruction"] = {"parts": [{"text": system}]}
+    if json_mode:
+        body["generationConfig"] = {"responseMimeType": "application/json"}
+    return model, url, headers, body
+
+
+def _extract_text(settings: Settings, payload: Any) -> str:
+    if settings.provider != "gemini":
+        raise ProviderError(f"Provider {settings.provider!r} is not implemented yet.")
+    try:
+        parts = payload["candidates"][0]["content"]["parts"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ProviderError(f"Unexpected provider response shape: {exc}") from exc
+    text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+    if not text:
+        raise ProviderError("Provider returned no text content.")
+    return text
+
+
+def _parse_and_validate(text: str, json_mode: bool, response_model: Optional[Type[BaseModel]]) -> Any:
+    if not json_mode:
+        return text
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise LLMError(f"Provider did not return valid JSON: {exc}") from exc
+    if response_model is not None:
+        try:
+            return response_model.model_validate(data)
+        except ValidationError as exc:
+            raise LLMError(
+                f"JSON did not match {response_model.__name__}: {exc}"
+            ) from exc
+    return data
+
+
+def call_llm(
+    stage: str,
+    system: str,
+    user: str,
+    json_mode: bool = False,
+    *,
+    response_model: Optional[Type[BaseModel]] = None,
+    settings: Optional[Settings] = None,
+    quota: Optional[QuotaState] = None,
+    http_post: Optional[Callable[..., Any]] = None,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    trace_hook: Optional[TraceHook] = None,
+) -> Any:
+    """Call the configured LLM once, with retries/quota, and return the result.
+
+    Returns raw text, a parsed JSON object, or a validated `response_model`
+    instance depending on the arguments.
+    """
+    active_settings = settings or config_mod.settings
+    active_quota = quota if quota is not None else config_mod.quota
+    poster = http_post or requests.post
+    hook = trace_hook or default_trace_hook
+
+    if stage not in config_mod.STAGES:
+        raise LLMError(f"Unknown stage {stage!r}; expected one of {config_mod.STAGES}")
+
+    if active_settings.provider == "gemini" and not active_settings.api_key:
+        raise LLMError("No API key configured (set LLM_API_KEY).")
+
+    model, url, headers, body = _build_request(active_settings, stage, system, user, json_mode)
+
+    max_attempts = max(1, active_settings.max_retries)
+    started = time.perf_counter()
+    last_error: Optional[str] = None
+    attempt = 0
+
+    for attempt in range(1, max_attempts + 1):
+        if active_settings.enforce_quota and not active_quota.has_capacity():
+            elapsed = (time.perf_counter() - started) * 1000
+            hook(Trace(stage, model, active_settings.provider, elapsed,
+                       "quota_exceeded", attempt, "daily quota exhausted"))
+            raise QuotaExceeded("Daily request quota reached; failing gracefully.")
+
+        status_code: Optional[int] = None
+        try:
+            response = poster(
+                url, headers=headers, json=body, timeout=active_settings.timeout_seconds
+            )
+        except requests.exceptions.Timeout as exc:
+            last_error = f"timeout: {exc}"
+        except requests.exceptions.RequestException as exc:
+            last_error = f"request error: {exc}"
+        else:
+            if active_settings.enforce_quota:
+                active_quota.consume(1)
+            status_code = response.status_code
+
+            snippet = (getattr(response, "text", "") or "").strip()[:200]
+            if status_code == 429:
+                last_error = f"429 rate limited: {snippet}".strip()
+            elif 500 <= status_code < 600:
+                last_error = f"server error {status_code}: {snippet}".strip()
+            elif status_code >= 400:
+                elapsed = (time.perf_counter() - started) * 1000
+                hook(Trace(stage, model, active_settings.provider, elapsed,
+                           "error", attempt, f"HTTP {status_code}"))
+                raise ProviderError(
+                    f"Provider rejected request with HTTP {status_code}: "
+                    f"{getattr(response, 'text', '')[:200]}"
+                )
+            else:
+                try:
+                    text = _extract_text(active_settings, response.json())
+                    result = _parse_and_validate(text, json_mode, response_model)
+                except LLMError as exc:
+                    elapsed = (time.perf_counter() - started) * 1000
+                    hook(Trace(stage, model, active_settings.provider, elapsed,
+                               "error", attempt, str(exc)))
+                    raise
+                elapsed = (time.perf_counter() - started) * 1000
+                hook(Trace(stage, model, active_settings.provider, elapsed,
+                           "ok", attempt, None))
+                return result
+
+        # Retryable failure: back off unless this was the final attempt.
+        if attempt < max_attempts:
+            sleep_fn(active_settings.retry_backoff_base ** (attempt - 1))
+
+    elapsed = (time.perf_counter() - started) * 1000
+    hook(Trace(stage, model, active_settings.provider, elapsed,
+               "error", attempt, last_error))
+    raise LLMError(f"LLM call failed after {max_attempts} attempts: {last_error}")
