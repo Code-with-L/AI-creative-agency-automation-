@@ -100,6 +100,24 @@ docker run --rm --env-file .env ai-creative-agency-automation --help
 It installs the package (not editable) and points `PROMPT_DIR` at the bundled
 prompts. The `.env` file is never copied into the image (see `.dockerignore`).
 
+## Web UI
+
+A local single-page app answers the human gate in a browser instead of a
+terminal — brief in, audited copy out, you approve/edit/reject with a click:
+
+```powershell
+python -m pip install -e .[web]
+python -m src.webui        # or: ai-creative-agency
+# open http://127.0.0.1:8000
+```
+
+Demo mode is the default (offline, no quota). A `live provider` toggle runs
+the real pipeline and spends quota — a live run is never auto-approved; the
+gate buttons are the only path forward. The page shows the copy, both audits,
+blocklist status, full revise-loop history, and lets you edit the copy inline
+before re-auditing. Safety model identical to the CLI: blocklist floor, audits,
+and a human decision that the model never gets.
+
 ## Audit ledger
 
 Every run can be recorded to a local JSONL ledger:

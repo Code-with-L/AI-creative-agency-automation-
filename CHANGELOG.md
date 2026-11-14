@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0
+
+### Added
+- Local web UI: `src/webui.py` (FastAPI + single-page app). Brief in → audited
+  copy → browser buttons for approve / edit & re-audit / reject. Demo mode by
+  default (offline); a live toggle runs the real provider. Human gate semantics
+  identical to the CLI — no auto-approval in live mode.
+- Entry point `ai-creative-agency`; optional dependency extra `[web]`
+  (`fastapi`, `uvicorn`).
+- 7 web UI tests (TestClient): gate flow, edit-then-approve, reject, 422 on
+  incomplete edits, 404 on unknown runs.
+
 ## 0.7.0
 
 ### Added

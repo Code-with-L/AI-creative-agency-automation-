@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-creative-agency-automation"
-version = "0.7.0"
+version = "0.8.0"
 description = "Safety-first pipeline that turns a messy client brief into human-approved ad copy: deterministic blocklist, legal and brand audits, human gate, audit ledger and deliverable export."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -33,12 +33,18 @@ dependencies = [
 dev = [
     "pytest>=8",
     "ruff>=0.6",
+    "httpx>=0.27",
+]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
 ]
 
 [project.scripts]
 ai-creative-pipeline = "src.cli:main"
 ai-creative-ledger = "src.ledger_report:main"
 ai-creative-deliverable = "src.export_deliverable:main"
+ai-creative-agency = "src.webui:main"
 
 [tool.setuptools]
 packages = ["src", "src.pipeline"]

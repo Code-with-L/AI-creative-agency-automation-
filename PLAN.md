@@ -72,6 +72,9 @@ markdown, audit report, and a machine-readable JSON copy.
   strings in tracked files). The whole codebase is ruff-clean (F/I/UP).
   Never pushed without an explicit request.
 - Python 3.11/3.12 only exercised in CI config; this checkout runs 3.10.6.
+- Web UI (`src/webui.py`, FastAPI): browser approve/edit/reject gate behind
+  the same safety model; `ai-creative-agency` entry point; demo is offline,
+  live mode is a toggle that never auto-approves.
 
 ## Risks / state
 
