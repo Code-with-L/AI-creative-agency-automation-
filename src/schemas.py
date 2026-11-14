@@ -1,7 +1,7 @@
 """Pydantic models for Phase 1."""
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 PLACEHOLDER_VALUES = {"", "unspecified", "n/a", "unknown", "tbd", "none", "null"}
 
 
-def _clean_text(value: Any) -> Optional[str]:
+def _clean_text(value: Any) -> str | None:
     """Coerce one value to a stripped string, or None when it is a placeholder.
 
     Lists/tuples are joined into one comma-separated phrase (models sometimes
@@ -27,7 +27,7 @@ def _clean_text(value: Any) -> Optional[str]:
     return text
 
 
-def _clean_list(value: Any) -> List[str]:
+def _clean_list(value: Any) -> list[str]:
     """Coerce a scalar, list or None into a list of non-placeholder strings."""
     if value is None:
         return []
@@ -35,7 +35,7 @@ def _clean_list(value: Any) -> List[str]:
         items = list(value)
     else:
         items = [value]
-    cleaned: List[str] = []
+    cleaned: list[str] = []
     for item in items:
         text = _clean_text(item)
         if text:
@@ -50,24 +50,24 @@ class CreativeBrief(BaseModel):
     "Unspecified"), so downstream stages can tell "unknown" from "answered".
     """
 
-    client: Optional[str] = None
-    product: Optional[str] = None
-    audience: Optional[str] = None
-    goal: Optional[str] = None
-    tone: Optional[str] = None
-    channels: List[str] = Field(default_factory=list)
-    must_include: List[str] = Field(default_factory=list)
-    avoid: List[str] = Field(default_factory=list)
-    raw_text: Optional[str] = None
+    client: str | None = None
+    product: str | None = None
+    audience: str | None = None
+    goal: str | None = None
+    tone: str | None = None
+    channels: list[str] = Field(default_factory=list)
+    must_include: list[str] = Field(default_factory=list)
+    avoid: list[str] = Field(default_factory=list)
+    raw_text: str | None = None
 
     @field_validator("client", "product", "audience", "goal", "tone", mode="before")
     @classmethod
-    def _normalise_text(cls, value: Any) -> Optional[str]:
+    def _normalise_text(cls, value: Any) -> str | None:
         return _clean_text(value)
 
     @field_validator("channels", "must_include", "avoid", mode="before")
     @classmethod
-    def _normalise_list(cls, value: Any) -> List[str]:
+    def _normalise_list(cls, value: Any) -> list[str]:
         return _clean_list(value)
 
 
@@ -77,7 +77,7 @@ class AdCopy(BaseModel):
     headline: str = Field(..., min_length=1)
     body: str = Field(..., min_length=1)
     cta: str = Field(..., min_length=1)
-    disclosures: List[str] = Field(default_factory=list)
+    disclosures: list[str] = Field(default_factory=list)
 
 
 class AuditResult(BaseModel):
@@ -89,7 +89,7 @@ class AuditResult(BaseModel):
 
     approved: bool
     risk_score: int = Field(..., ge=1, le=10)
-    required_edits: List[str] = Field(default_factory=list)
-    reasons: List[str] = Field(default_factory=list)
-    blocklist_hits: List[str] = Field(default_factory=list)
+    required_edits: list[str] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    blocklist_hits: list[str] = Field(default_factory=list)
     reviewed_by_human: bool = False

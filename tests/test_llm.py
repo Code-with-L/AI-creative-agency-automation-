@@ -84,6 +84,138 @@ def test_json_mode_validates_into_pydantic_model():
     assert result.headline == "H"
 
 
+def test_safety_settings_are_sent_with_every_request():
+    captured = {}
+
+    def poster(url, **kwargs):
+        captured["json"] = kwargs["json"]
+        return gemini_ok("hello")
+
+    call_llm(
+        "intake", SYSTEM, USER, settings=make_settings(), quota=QuotaState(100),
+        http_post=poster, trace_hook=lambda t: None,
+    )
+    safety = captured["json"]["safetySettings"]
+    categories = [entry["category"] for entry in safety]
+    assert "HARM_CATEGORY_HARASSMENT" in categories
+    assert "HARM_CATEGORY_HATE_SPEECH" in categories
+    assert "HARM_CATEGORY_SEXUALLY_EXPLICIT" in categories
+    assert "HARM_CATEGORY_DANGEROUS_CONTENT" in categories
+    assert all(entry["threshold"] == "BLOCK_MEDIUM_AND_ABOVE" for entry in safety)
+
+
+def test_invalid_safety_threshold_is_rejected():
+    with pytest.raises(ValueError, match="safety_threshold"):
+        make_settings(safety_threshold="BLOCK_ANYTHING_GOES")
+
+
+def test_429_retry_after_header_is_honored_and_capped():
+    class RetryAfterResponse(FakeResponse):
+        def __init__(self, retry_after):
+            super().__init__(429, text="rate limited")
+            self.headers = {"Retry-After": str(retry_after)}
+
+    slept = []
+    calls = {"n": 0}
+
+    def poster(url, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return RetryAfterResponse(120)
+        return gemini_ok("recovered")
+
+    result = call_llm(
+        "audit", SYSTEM, USER, settings=make_settings(), quota=QuotaState(100),
+        http_post=poster, sleep_fn=slept.append, trace_hook=lambda t: None,
+    )
+    assert result == "recovered"
+    assert slept == [30.0]  # capped, not the 120s the provider asked for
+
+
+def test_retry_after_header_below_cap_is_used_verbatim():
+    class RetryAfterResponse(FakeResponse):
+        def __init__(self, retry_after):
+            super().__init__(429, text="rate limited")
+            self.headers = {"retry-after": retry_after}
+
+    slept = []
+
+    def poster(url, **kwargs):
+        if poster.calls == 0:  # first call only
+            poster.calls += 1
+            return RetryAfterResponse("7")
+        return gemini_ok("recovered")
+
+    poster.calls = 0
+    result = call_llm(
+        "audit", SYSTEM, USER, settings=make_settings(), quota=QuotaState(100),
+        http_post=poster, sleep_fn=slept.append, trace_hook=lambda t: None,
+    )
+    assert result == "recovered"
+    assert slept == [7.0]
+
+
+def test_retry_after_garbage_falls_back_to_backoff():
+    class GarbageRetryAfter(FakeResponse):
+        def __init__(self):
+            super().__init__(503, text="overloaded")
+            self.headers = {"Retry-After": "soon"}
+
+    slept = []
+
+    def poster(url, **kwargs):
+        if poster.n == 0:
+            poster.n += 1
+            return GarbageRetryAfter()
+        return gemini_ok("recovered")
+
+    poster.n = 0
+    result = call_llm(
+        "audit", SYSTEM, USER, settings=make_settings(), quota=QuotaState(100),
+        http_post=poster, sleep_fn=slept.append, trace_hook=lambda t: None,
+    )
+    assert result == "recovered"
+    assert slept == [1.0]  # default backoff base=2 -> 2**0
+
+
+def test_response_schema_emitted_when_enabled():
+    captured = {}
+
+    def poster(url, **kwargs):
+        captured["json"] = kwargs["json"]
+        ad = {"headline": "H", "body": "B", "cta": "C", "disclosures": []}
+        payload = {"candidates": [{"content": {"parts": [{"text": json.dumps(ad)}]}}]}
+        return FakeResponse(200, payload=payload)
+
+    result = call_llm(
+        "creative", SYSTEM, USER, json_mode=True, response_model=AdCopy,
+        settings=make_settings(response_schema=True), quota=QuotaState(100),
+        http_post=poster, trace_hook=lambda t: None,
+    )
+    assert isinstance(result, AdCopy)
+    schema = captured["json"]["generationConfig"]["responseSchema"]
+    assert schema["type"] == "object"
+    assert "headline" in schema["properties"]
+    assert schema["required"] == ["headline", "body", "cta"]
+
+
+def test_response_schema_absent_by_default():
+    captured = {}
+
+    def poster(url, **kwargs):
+        captured["json"] = kwargs["json"]
+        ad = {"headline": "H", "body": "B", "cta": "C", "disclosures": []}
+        payload = {"candidates": [{"content": {"parts": [{"text": json.dumps(ad)}]}}]}
+        return FakeResponse(200, payload=payload)
+
+    call_llm(
+        "creative", SYSTEM, USER, json_mode=True, response_model=AdCopy,
+        settings=make_settings(), quota=QuotaState(100),
+        http_post=poster, trace_hook=lambda t: None,
+    )
+    assert "responseSchema" not in captured["json"]["generationConfig"]
+
+
 def test_429_then_success_retries_with_backoff():
     calls = {"n": 0}
     slept = []
@@ -101,6 +233,69 @@ def test_429_then_success_retries_with_backoff():
     assert result == "recovered"
     assert calls["n"] == 2
     assert slept  # backoff happened
+
+
+def test_503_then_success_retries_with_exponential_backoff():
+    calls = {"n": 0}
+    slept = []
+
+    def poster(url, **kwargs):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            return FakeResponse(503, text="model is experiencing high demand")
+        return gemini_ok("recovered")
+
+    records = []
+    result = call_llm(
+        "creative", SYSTEM, USER, settings=make_settings(max_retries=2),
+        quota=QuotaState(100), http_post=poster, sleep_fn=slept.append,
+        trace_hook=records.append,
+    )
+    assert result == "recovered"
+    assert calls["n"] == 3
+    assert slept == [1.0, 2.0]
+    assert records[-1].status == "ok"
+    assert records[-1].attempts == 3
+
+
+def test_503_exhausted_raises_after_max_retries_plus_one_attempts():
+    calls = {"n": 0}
+
+    def poster(url, **kwargs):
+        calls["n"] += 1
+        return FakeResponse(503, text="model is experiencing high demand")
+
+    records = []
+    with pytest.raises(LLMError) as excinfo:
+        call_llm(
+            "creative", SYSTEM, USER, settings=make_settings(max_retries=2),
+            quota=QuotaState(100), http_post=poster, sleep_fn=lambda _s: None,
+            trace_hook=records.append,
+        )
+    assert calls["n"] == 3
+    assert records[-1].attempts == 3
+    assert "after 3 attempts" in str(excinfo.value)
+
+
+def test_zero_retries_means_single_attempt():
+    calls = {"n": 0}
+
+    def poster(url, **kwargs):
+        calls["n"] += 1
+        return FakeResponse(503, text="model is experiencing high demand")
+
+    with pytest.raises(LLMError):
+        call_llm(
+            "creative", SYSTEM, USER, settings=make_settings(max_retries=0),
+            quota=QuotaState(100), http_post=poster, sleep_fn=lambda _s: None,
+            trace_hook=lambda t: None,
+        )
+    assert calls["n"] == 1
+
+
+def test_max_retries_above_cap_is_rejected():
+    with pytest.raises(ValueError):
+        make_settings(max_retries=4)
 
 
 def test_429_exhausted_raises_llm_error():
@@ -178,6 +373,61 @@ def test_trace_hook_records_status():
     assert records[0].status == "ok"
     assert records[0].stage == "brand_audit"
     assert records[0].attempts == 1
+
+
+def _ad_payload(headline="H"):
+    return {"headline": headline, "body": "B", "cta": "C", "disclosures": []}
+
+
+def test_validation_failure_retries_then_recovers():
+    calls = {"n": 0}
+
+    def poster(url, **kwargs):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            # Not valid AdCopy: no cta/body on the first attempt.
+            return gemini_ok(json.dumps({"headline": "H"}))
+        return gemini_ok(json.dumps(_ad_payload()))
+
+    slept = []
+    result = call_llm(
+        "creative", SYSTEM, USER, json_mode=True, response_model=AdCopy,
+        settings=make_settings(), quota=QuotaState(100), http_post=poster,
+        sleep_fn=slept.append, trace_hook=lambda t: None,
+    )
+    assert isinstance(result, AdCopy)
+    assert calls["n"] == 3
+    assert slept  # backoff between retries
+
+
+def test_validation_failure_exhausts_cap_and_raises():
+    calls = {"n": 0}
+
+    def poster(url, **kwargs):
+        calls["n"] += 1
+        return gemini_ok(json.dumps({"not": "an ad"}))
+
+    with pytest.raises(LLMError, match="failed after"):
+        call_llm(
+            "creative", SYSTEM, USER, json_mode=True, response_model=AdCopy,
+            settings=make_settings(), quota=QuotaState(100), http_post=poster,
+            sleep_fn=lambda _s: None, trace_hook=lambda t: None,
+        )
+    assert calls["n"] == make_settings().max_retries + 1
+
+
+def test_validation_failure_consumes_quota_per_attempt():
+    def poster(url, **kwargs):
+        return gemini_ok(json.dumps({"headline": "H"}))
+
+    quota = QuotaState(10)
+    with pytest.raises(LLMError):
+        call_llm(
+            "creative", SYSTEM, USER, json_mode=True, response_model=AdCopy,
+            settings=make_settings(), quota=quota, http_post=poster,
+            sleep_fn=lambda _s: None, trace_hook=lambda t: None,
+        )
+    assert quota.used == make_settings().max_retries + 1
 
 
 def test_empty_model_raises_clear_error():

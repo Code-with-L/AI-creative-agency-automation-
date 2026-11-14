@@ -12,3 +12,15 @@ Rules:
 - Do not fabricate statistics, awards or endorsements.
 - Include any legally required `disclosures` as plain strings.
 - Return ONLY JSON matching the `AdCopy` schema. No prose, no markdown.
+
+The JSON object must contain exactly these keys:
+
+{
+  "headline": "<string, required, non-empty>",
+  "body": "<string, required, non-empty>",
+  "cta": "<string, required, non-empty>",
+  "disclosures": ["<string>", "..."]
+}
+
+`headline`, `body` and `cta` are all required and must never be omitted.
+`disclosures` is always present; use `[]` when nothing is required.

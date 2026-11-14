@@ -13,14 +13,19 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any
 
 import requests
 from pydantic import BaseModel, ValidationError
 
 from . import config as config_mod
-from .config import QuotaState, Settings
+from .config import SAFETY_CATEGORIES, QuotaState, Settings
+from .response_schema import to_gemini_response_schema
+
+# Never sleep longer than this, even if the provider asks for it.
+RETRY_AFTER_CAP_SECONDS = 30.0
 
 
 class LLMError(RuntimeError):
@@ -43,22 +48,55 @@ class Trace:
     latency_ms: float
     status: str
     attempts: int
-    error: Optional[str] = None
+    error: str | None = None
 
 
 TraceHook = Callable[[Trace], None]
 
 # Default in-memory trace sink. Pass your own trace_hook, or clear this list.
-traces: List[Trace] = []
+traces: list[Trace] = []
 
 
 def default_trace_hook(trace: Trace) -> None:
     traces.append(trace)
 
 
+def _retry_after_seconds(headers: Any) -> float | None:
+    """Parse a Retry-After header (integer seconds or HTTP-date), capped."""
+    if not headers:
+        return None
+    try:
+        items = list(headers.items())
+    except AttributeError:
+        return None
+    lowered = {str(k).strip().lower(): v for k, v in items}
+    raw = lowered.get("retry-after")
+    if raw is None:
+        return None
+    raw = str(raw).strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        try:
+            from datetime import datetime, timezone
+            from email.utils import parsedate_to_datetime
+
+            value = (parsedate_to_datetime(raw) - datetime.now(timezone.utc)).total_seconds()
+        except Exception:
+            return None
+    if value < 0:
+        value = 0.0
+    return min(value, RETRY_AFTER_CAP_SECONDS)
+
+
 def _build_request(
-    settings: Settings, stage: str, system: str, user: str, json_mode: bool
-) -> "tuple[str, str, Dict[str, str], Dict[str, Any]]":
+    settings: Settings,
+    stage: str,
+    system: str,
+    user: str,
+    json_mode: bool,
+    response_model: type[BaseModel] | None = None,
+) -> tuple[str, str, dict[str, str], dict[str, Any]]:
     model = settings.model_for_stage(stage)
 
     if settings.provider != "gemini":
@@ -80,13 +118,24 @@ def _build_request(
         "Content-Type": "application/json",
         "x-goog-api-key": settings.api_key or "",
     }
-    body: Dict[str, Any] = {
+    body: dict[str, Any] = {
         "contents": [{"role": "user", "parts": [{"text": user}]}],
     }
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
+    body["safetySettings"] = [
+        {"category": category, "threshold": settings.safety_threshold}
+        for category in SAFETY_CATEGORIES
+    ]
     if json_mode:
         body["generationConfig"] = {"responseMimeType": "application/json"}
+        if settings.response_schema and response_model is not None:
+            try:
+                body["generationConfig"]["responseSchema"] = to_gemini_response_schema(
+                    response_model
+                )
+            except ValueError as exc:
+                raise ProviderError(str(exc)) from exc
     return model, url, headers, body
 
 
@@ -103,7 +152,7 @@ def _extract_text(settings: Settings, payload: Any) -> str:
     return text
 
 
-def _parse_and_validate(text: str, json_mode: bool, response_model: Optional[Type[BaseModel]]) -> Any:
+def _parse_and_validate(text: str, json_mode: bool, response_model: type[BaseModel] | None) -> Any:
     if not json_mode:
         return text
     try:
@@ -126,12 +175,12 @@ def call_llm(
     user: str,
     json_mode: bool = False,
     *,
-    response_model: Optional[Type[BaseModel]] = None,
-    settings: Optional[Settings] = None,
-    quota: Optional[QuotaState] = None,
-    http_post: Optional[Callable[..., Any]] = None,
+    response_model: type[BaseModel] | None = None,
+    settings: Settings | None = None,
+    quota: QuotaState | None = None,
+    http_post: Callable[..., Any] | None = None,
     sleep_fn: Callable[[float], None] = time.sleep,
-    trace_hook: Optional[TraceHook] = None,
+    trace_hook: TraceHook | None = None,
 ) -> Any:
     """Call the configured LLM once, with retries/quota, and return the result.
 
@@ -149,11 +198,11 @@ def call_llm(
     if active_settings.provider == "gemini" and not active_settings.api_key:
         raise LLMError("No API key configured (set LLM_API_KEY).")
 
-    model, url, headers, body = _build_request(active_settings, stage, system, user, json_mode)
+    model, url, headers, body = _build_request(active_settings, stage, system, user, json_mode, response_model)
 
-    max_attempts = max(1, active_settings.max_retries)
+    max_attempts = max(1, active_settings.max_retries + 1)
     started = time.perf_counter()
-    last_error: Optional[str] = None
+    last_error: str | None = None
     attempt = 0
 
     for attempt in range(1, max_attempts + 1):
@@ -163,7 +212,8 @@ def call_llm(
                        "quota_exceeded", attempt, "daily quota exhausted"))
             raise QuotaExceeded("Daily request quota reached; failing gracefully.")
 
-        status_code: Optional[int] = None
+        status_code: int | None = None
+        retry_after = None
         try:
             response = poster(
                 url, headers=headers, json=body, timeout=active_settings.timeout_seconds
@@ -180,8 +230,10 @@ def call_llm(
             snippet = (getattr(response, "text", "") or "").strip()[:200]
             if status_code == 429:
                 last_error = f"429 rate limited: {snippet}".strip()
+                retry_after = _retry_after_seconds(getattr(response, "headers", None))
             elif 500 <= status_code < 600:
                 last_error = f"server error {status_code}: {snippet}".strip()
+                retry_after = _retry_after_seconds(getattr(response, "headers", None))
             elif status_code >= 400:
                 elapsed = (time.perf_counter() - started) * 1000
                 hook(Trace(stage, model, active_settings.provider, elapsed,
@@ -198,15 +250,22 @@ def call_llm(
                     elapsed = (time.perf_counter() - started) * 1000
                     hook(Trace(stage, model, active_settings.provider, elapsed,
                                "error", attempt, str(exc)))
-                    raise
-                elapsed = (time.perf_counter() - started) * 1000
-                hook(Trace(stage, model, active_settings.provider, elapsed,
-                           "ok", attempt, None))
-                return result
+                    # Schema violations retry within the same hard cap: the
+                    # model is stochastic and may produce valid output on a
+                    # retry, but if it never does the run still fails fast.
+                    last_error = str(exc)
+                else:
+                    elapsed = (time.perf_counter() - started) * 1000
+                    hook(Trace(stage, model, active_settings.provider, elapsed,
+                               "ok", attempt, None))
+                    return result
 
-        # Retryable failure: back off unless this was the final attempt.
+        # Retryable failure: honour Retry-After when present, else back off.
         if attempt < max_attempts:
-            sleep_fn(active_settings.retry_backoff_base ** (attempt - 1))
+            if retry_after is not None:
+                sleep_fn(retry_after)
+            else:
+                sleep_fn(active_settings.retry_backoff_base ** (attempt - 1))
 
     elapsed = (time.perf_counter() - started) * 1000
     hook(Trace(stage, model, active_settings.provider, elapsed,

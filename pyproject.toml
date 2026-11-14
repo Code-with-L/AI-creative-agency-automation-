@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-creative-agency-automation"
+version = "0.6.0"
+description = "Safety-first pipeline that turns a messy client brief into human-approved ad copy: deterministic blocklist, legal and brand audits, human gate, audit ledger and deliverable export."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "KaigaiCodes", email = "leon2theuniverse@gmail.com" },
+]
+keywords = ["ad-copy", "llm", "langgraph", "content-moderation", "compliance"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "License :: Other/Proprietary License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing",
+]
+# Keep these in sync with requirements.txt.
+dependencies = [
+    "pydantic>=2.7,<3",
+    "requests>=2.31,<3",
+    "langgraph==1.2.16",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+ai-creative-pipeline = "src.cli:main"
+ai-creative-ledger = "src.ledger_report:main"
+ai-creative-deliverable = "src.export_deliverable:main"
+
+[tool.setuptools]
+packages = ["src", "src.pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+# F: pyflakes (unused imports/vars, undefined names), I: import sorting,
+# UP: pyupgrade. Kept narrow on purpose - style nits are not worth churn.
+select = ["F", "I", "UP"]

@@ -32,7 +32,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -54,11 +54,11 @@ SPLITS = {
 }
 
 
-def _load(path: Path) -> List[Dict[str, Any]]:
+def _load(path: Path) -> list[dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _ad_text(ad: Dict[str, Any]) -> str:
+def _ad_text(ad: dict[str, Any]) -> str:
     parts = [ad.get("headline", ""), ad.get("body", ""), ad.get("cta", "")]
     parts.extend(ad.get("disclosures", []))
     return "\n".join(parts)
@@ -89,10 +89,10 @@ def load_dotenv(path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def evaluate_blocklist(
-    pass_ads: List[Dict[str, Any]],
-    fail_ads: List[Dict[str, Any]],
-) -> Dict[str, Any]:
-    rows: List[Dict[str, Any]] = []
+    pass_ads: list[dict[str, Any]],
+    fail_ads: list[dict[str, Any]],
+) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
     false_positives = 0
     false_negatives = 0
     expected_total = 0
@@ -153,9 +153,9 @@ def evaluate_blocklist(
 # ---------------------------------------------------------------------------
 
 def evaluate_audit_live(
-    pass_ads: List[Dict[str, Any]],
-    fail_ads: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    pass_ads: list[dict[str, Any]],
+    fail_ads: list[dict[str, Any]],
+) -> dict[str, Any]:
     load_dotenv(ROOT / ".env")
     from src.llm import call_llm  # imported lazily; only needed for --live
 
@@ -165,7 +165,7 @@ def evaluate_audit_live(
         raise SystemExit("No API key found. Set LLM_API_KEY in .env for --live.")
     system = load_prompt("legal_audit", DEFAULT_PROMPT_DIR)
 
-    def decide(ad: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    def decide(ad: dict[str, Any]) -> tuple[bool, list[str]]:
         user = f"Ad copy:\n{json.dumps(ad, ensure_ascii=False, indent=2)}"
         result = call_llm(
             "audit",
@@ -182,7 +182,7 @@ def evaluate_audit_live(
         approved = bool(result.approved) and not hits
         return approved, hits
 
-    rows: List[Dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     correct = 0
     for ad in pass_ads:
         approved, hits = decide(ad)
@@ -229,7 +229,7 @@ def evaluate_audit_live(
 # Reporting
 # ---------------------------------------------------------------------------
 
-def print_blocklist_report(split: str, result: Dict[str, Any]) -> None:
+def print_blocklist_report(split: str, result: dict[str, Any]) -> None:
     print(f"\n=== Blocklist layer ({split}) ===")
     print(f"  {'kind':<5} {'headline':<34} verdict")
     for row in result["rows"]:
@@ -244,7 +244,7 @@ def print_blocklist_report(split: str, result: Dict[str, Any]) -> None:
     print(f"  expected-hit recall: {result['expected_hit_recall'] * 100:.1f}%")
 
 
-def print_audit_report(split: str, result: Dict[str, Any]) -> None:
+def print_audit_report(split: str, result: dict[str, Any]) -> None:
     print(f"\n=== Live audit layer ({split}) ===")
     print(f"  {'kind':<5} {'headline':<34} {'approved':<9} verdict")
     for row in result["rows"]:
@@ -258,7 +258,7 @@ def print_audit_report(split: str, result: Dict[str, Any]) -> None:
     print(f"  requests  : {result['requests']} (quota used {result['quota_used']})")
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate ad-safety behaviour.")
     parser.add_argument(
         "--split",
@@ -274,7 +274,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     pass_path, fail_path = SPLITS[args.split]
     pass_ads = _load(pass_path)

@@ -6,10 +6,10 @@ from .state import (
     AWAITING_HUMAN,
     ESCALATED,
     FAILED,
-    HistoryEntry,
-    PipelineState,
     REJECTED,
     RUNNING,
+    HistoryEntry,
+    PipelineState,
 )
 
 __all__ = [

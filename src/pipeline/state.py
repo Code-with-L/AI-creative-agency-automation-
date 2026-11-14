@@ -1,8 +1,6 @@
 """State shared by every node in the creative pipeline."""
 from __future__ import annotations
 
-from typing import List, Optional
-
 from pydantic import BaseModel, Field
 
 from ..schemas import AdCopy, AuditResult, CreativeBrief
@@ -24,11 +22,11 @@ class HistoryEntry(BaseModel):
     """One auditable step: which stage ran, with what result and latency."""
 
     stage: str
-    model: Optional[str] = None
+    model: str | None = None
     latency_ms: float = 0.0
     attempt: int = 0
     status: str = "ok"
-    detail: Optional[str] = None
+    detail: str | None = None
 
 
 class PipelineState(BaseModel):
@@ -40,14 +38,14 @@ class PipelineState(BaseModel):
     """
 
     raw_input: str
-    brief: Optional[CreativeBrief] = None
-    ad_copy: Optional[AdCopy] = None
-    blocklist_hits: List[str] = Field(default_factory=list)
-    legal_result: Optional[AuditResult] = None
-    brand_result: Optional[AuditResult] = None
+    brief: CreativeBrief | None = None
+    ad_copy: AdCopy | None = None
+    blocklist_hits: list[str] = Field(default_factory=list)
+    legal_result: AuditResult | None = None
+    brand_result: AuditResult | None = None
     attempt: int = 0
-    history: List[HistoryEntry] = Field(default_factory=list)
+    history: list[HistoryEntry] = Field(default_factory=list)
     status: str = RUNNING
-    human_decision: Optional[str] = None
-    refine_notes: List[str] = Field(default_factory=list)
-    error: Optional[str] = None
+    human_decision: str | None = None
+    refine_notes: list[str] = Field(default_factory=list)
+    error: str | None = None

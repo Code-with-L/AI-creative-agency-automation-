@@ -7,24 +7,25 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any
 
 from langgraph.graph import END
 
 from ..blocklist import check_blocklist
 from ..config import QuotaState, Settings
-from ..llm import LLMError, call_llm
+from ..llm import call_llm
 from ..schemas import AdCopy, AuditResult, CreativeBrief
 from .state import (
+    APPROVED,
+    AWAITING_HUMAN,
+    ESCALATED,
     FAILED,
     MAX_ATTEMPTS,
-    RUNNING,
-    AWAITING_HUMAN,
-    APPROVED,
     REJECTED,
-    ESCALATED,
+    RUNNING,
     HistoryEntry,
     PipelineState,
 )
@@ -36,7 +37,7 @@ DEFAULT_PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts"
 LEGAL_STAGE = "audit"
 
 
-def load_prompt(name: str, prompt_dir: Optional[Path] = None) -> str:
+def load_prompt(name: str, prompt_dir: Path | None = None) -> str:
     """Read one system prompt from `prompts/<name>.md`."""
     path = Path(prompt_dir or DEFAULT_PROMPT_DIR) / f"{name}.md"
     return path.read_text(encoding="utf-8")
@@ -50,12 +51,18 @@ class PipelineDeps:
     quota: QuotaState
     llm: Callable[..., Any] = call_llm
     prompt_dir: Path = DEFAULT_PROMPT_DIR
-    trace_hook: Optional[Callable[[Any], None]] = None
+    trace_hook: Callable[[Any], None] | None = None
 
     @classmethod
-    def from_env(cls) -> "PipelineDeps":
+    def from_env(cls) -> PipelineDeps:
         settings = Settings.from_env()
-        return cls(settings=settings, quota=QuotaState(daily_quota=settings.daily_quota))
+        return cls(
+            settings=settings,
+            quota=QuotaState(
+                daily_quota=settings.daily_quota,
+                path=settings.quota_state_path,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -70,14 +77,14 @@ def _json(value: Any) -> str:
     return json.dumps(value, indent=2, ensure_ascii=False)
 
 
-def _ad_text(ad_copy: Optional[AdCopy]) -> str:
+def _ad_text(ad_copy: AdCopy | None) -> str:
     if ad_copy is None:
         return ""
     parts = [ad_copy.headline, ad_copy.body, ad_copy.cta, *ad_copy.disclosures]
     return "\n".join(part for part in parts if part)
 
 
-def _append(state: PipelineState, entry: HistoryEntry) -> List[HistoryEntry]:
+def _append(state: PipelineState, entry: HistoryEntry) -> list[HistoryEntry]:
     return state.history + [entry]
 
 
@@ -87,8 +94,8 @@ def _entry(
     started: float,
     attempt: int,
     status: str = "ok",
-    detail: Optional[str] = None,
-    model_stage: Optional[str] = None,
+    detail: str | None = None,
+    model_stage: str | None = None,
 ) -> HistoryEntry:
     try:
         model = deps.settings.model_for_stage(model_stage or stage)
@@ -110,9 +117,9 @@ def _failure(
     stage: str,
     started: float,
     exc: Exception,
-    attempt: Optional[int] = None,
-    model_stage: Optional[str] = None,
-) -> Dict[str, Any]:
+    attempt: int | None = None,
+    model_stage: str | None = None,
+) -> dict[str, Any]:
     message = f"{type(exc).__name__}: {exc}"
     entry = _entry(
         deps,
@@ -131,7 +138,7 @@ def _call(
     llm_stage: str,
     prompt_name: str,
     user: str,
-    response_model: Type[Any],
+    response_model: type[Any],
 ) -> Any:
     """Call the injected LLM and coerce its result to `response_model`."""
     system = load_prompt(prompt_name, deps.prompt_dir)
@@ -150,7 +157,7 @@ def _call(
     return response_model.model_validate(result)
 
 
-def _enforce_blocklist(audit: AuditResult, hits: List[str]) -> AuditResult:
+def _enforce_blocklist(audit: AuditResult, hits: list[str]) -> AuditResult:
     """Make the hard blocklist override any model verdict.
 
     The deterministic floor always wins: a blocklisted term can never be
@@ -182,7 +189,12 @@ def _creative_user(state: PipelineState) -> str:
         lines.append("Previous ad copy (do not repeat its problems):")
         lines.append(_json(state.ad_copy))
         lines.append("")
-    lines.append("Return one improved AdCopy as JSON.")
+    lines.append(
+        "Return one improved AdCopy as JSON with exactly these keys: "
+        "headline, body, cta, disclosures. headline, body and cta are all "
+        "required non-empty strings and must not be omitted. disclosures is "
+        "always present; use [] when nothing is required."
+    )
     return "\n".join(lines)
 
 
@@ -205,7 +217,7 @@ def _audit_user(state: PipelineState, instruction: str) -> str:
 # ---------------------------------------------------------------------------
 
 def make_intake_node(deps: PipelineDeps):
-    def intake(state: PipelineState) -> Dict[str, Any]:
+    def intake(state: PipelineState) -> dict[str, Any]:
         if state.status == FAILED:
             return {}
         started = time.perf_counter()
@@ -231,7 +243,7 @@ def make_intake_node(deps: PipelineDeps):
 
 
 def make_creative_node(deps: PipelineDeps):
-    def creative(state: PipelineState) -> Dict[str, Any]:
+    def creative(state: PipelineState) -> dict[str, Any]:
         if state.status == FAILED:
             return {}
         attempt = state.attempt + 1
@@ -263,7 +275,7 @@ def make_creative_node(deps: PipelineDeps):
 
 
 def make_blocklist_node(deps: PipelineDeps):
-    def blocklist(state: PipelineState) -> Dict[str, Any]:
+    def blocklist(state: PipelineState) -> dict[str, Any]:
         if state.status == FAILED:
             return {}
         started = time.perf_counter()
@@ -281,7 +293,7 @@ def make_blocklist_node(deps: PipelineDeps):
 
 
 def make_legal_audit_node(deps: PipelineDeps):
-    def legal_audit(state: PipelineState) -> Dict[str, Any]:
+    def legal_audit(state: PipelineState) -> dict[str, Any]:
         if state.status == FAILED:
             return {}
         started = time.perf_counter()
@@ -319,7 +331,7 @@ def make_legal_audit_node(deps: PipelineDeps):
 
 
 def make_brand_audit_node(deps: PipelineDeps):
-    def brand_audit(state: PipelineState) -> Dict[str, Any]:
+    def brand_audit(state: PipelineState) -> dict[str, Any]:
         if state.status == FAILED:
             return {}
         started = time.perf_counter()
@@ -354,11 +366,11 @@ def make_brand_audit_node(deps: PipelineDeps):
 
 
 def make_revise_node(deps: PipelineDeps):
-    def revise(state: PipelineState) -> Dict[str, Any]:
+    def revise(state: PipelineState) -> dict[str, Any]:
         if state.status == FAILED:
             return {}
         started = time.perf_counter()
-        notes: List[str] = []
+        notes: list[str] = []
         for audit in (state.legal_result, state.brand_result):
             if audit is not None:
                 notes.extend(audit.required_edits)
@@ -367,7 +379,7 @@ def make_revise_node(deps: PipelineDeps):
         if not notes:
             notes.append("Address the audit findings and produce a safer, on-brand rewrite.")
 
-        deduped: List[str] = []
+        deduped: list[str] = []
         for note in notes:
             note = (note or "").strip()
             if note and note not in deduped:
@@ -391,7 +403,7 @@ def make_revise_node(deps: PipelineDeps):
 
 
 def make_request_human_node(deps: PipelineDeps):
-    def request_human(state: PipelineState) -> Dict[str, Any]:
+    def request_human(state: PipelineState) -> dict[str, Any]:
         if state.status == FAILED:
             return {}
         started = time.perf_counter()
@@ -405,7 +417,7 @@ def make_request_human_node(deps: PipelineDeps):
     return request_human
 
 
-def _human_payload(state: PipelineState) -> Dict[str, Any]:
+def _human_payload(state: PipelineState) -> dict[str, Any]:
     return {
         "brief": state.brief.model_dump(mode="json") if state.brief else None,
         "ad_copy": state.ad_copy.model_dump(mode="json") if state.ad_copy else None,
@@ -427,7 +439,7 @@ def _human_payload(state: PipelineState) -> Dict[str, Any]:
 def make_human_gate_node(deps: PipelineDeps):
     from langgraph.types import interrupt
 
-    def human_gate(state: PipelineState) -> Dict[str, Any]:
+    def human_gate(state: PipelineState) -> dict[str, Any]:
         # Keep interrupt() outside any try/except: it suspends the graph by
         # raising internally, and swallowing that would break the pause.
         payload = interrupt(_human_payload(state))
@@ -488,8 +500,8 @@ def _invalid_decision(
     deps: PipelineDeps,
     started: float,
     payload: Any,
-    exc: Optional[Exception] = None,
-) -> Dict[str, Any]:
+    exc: Exception | None = None,
+) -> dict[str, Any]:
     if isinstance(payload, dict):
         decision = payload.get("decision")
         message = f"Unknown human decision {decision!r}"
@@ -504,7 +516,7 @@ def _invalid_decision(
 
 
 def make_escalate_node(deps: PipelineDeps):
-    def escalate(state: PipelineState) -> Dict[str, Any]:
+    def escalate(state: PipelineState) -> dict[str, Any]:
         started = time.perf_counter()
         detail = f"no approval after {state.attempt} attempt(s)"
         return {

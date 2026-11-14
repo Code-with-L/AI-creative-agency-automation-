@@ -8,15 +8,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END
 from langgraph.types import Command
+from pydantic import ValidationError
 
 from src.config import QuotaState, Settings
 from src.llm import LLMError, QuotaExceeded
-from src.schemas import AdCopy, AuditResult, CreativeBrief
 from src.pipeline import (
     APPROVED,
     AWAITING_HUMAN,
@@ -47,6 +45,7 @@ from src.pipeline.nodes import (
     route_after_audits,
     route_after_human,
 )
+from src.schemas import AdCopy, AuditResult, CreativeBrief
 
 # InMemorySaver round-trips pydantic models by class name; LangGraph warns
 # about that until a message-pack allowlist is registered. Harmless here.
@@ -275,7 +274,9 @@ def test_creative_prompt_contains_brief_facts():
     creative = llm.calls_for("creative")[0]
     assert "Acme" in creative.user
     assert "Coffee" in creative.user
-    assert "Return one improved AdCopy as JSON." in creative.user
+    assert "Return one improved AdCopy as JSON" in creative.user
+    for field in ("headline", "body", "cta", "disclosures"):
+        assert field in creative.user
 
 
 def test_every_call_uses_json_mode_and_injected_deps():
@@ -304,6 +305,24 @@ def test_load_prompt_reads_default_files():
     assert load_prompt("creative")
     assert load_prompt("legal_audit")
     assert load_prompt("brand_audit")
+
+
+def test_audit_prompts_spell_out_audit_result_keys():
+    fields = (
+        "approved",
+        "risk_score",
+        "required_edits",
+        "reasons",
+        "blocklist_hits",
+        "reviewed_by_human",
+    )
+    for name in ("legal_audit", "brand_audit"):
+        prompt = load_prompt(name)
+        assert "AuditResult" in prompt
+        assert "JSON" in prompt
+        for field in fields:
+            assert field in prompt, f"{name} prompt omits {field}"
+        assert '"reviewed_by_human": false' in prompt
 
 
 def test_legal_stage_constant_matches_config():

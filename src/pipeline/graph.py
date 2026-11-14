@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -28,7 +28,7 @@ __all__ = ["build_graph", "run_pipeline", "new_thread_config", "MAX_ATTEMPTS"]
 from .state import MAX_ATTEMPTS  # re-exported for callers
 
 
-def build_graph(deps: Optional[PipelineDeps] = None, checkpointer: Any = None):
+def build_graph(deps: PipelineDeps | None = None, checkpointer: Any = None):
     """Compile the pipeline.
 
     A checkpointer is required because the human gate uses `interrupt()`.
@@ -76,16 +76,16 @@ def build_graph(deps: Optional[PipelineDeps] = None, checkpointer: Any = None):
     return graph.compile(checkpointer=checkpointer)
 
 
-def new_thread_config(thread_id: Optional[str] = None) -> Dict[str, Any]:
+def new_thread_config(thread_id: str | None = None) -> dict[str, Any]:
     return {"configurable": {"thread_id": thread_id or uuid.uuid4().hex}}
 
 
 def run_pipeline(
     raw_input: str,
-    deps: Optional[PipelineDeps] = None,
-    thread_id: Optional[str] = None,
+    deps: PipelineDeps | None = None,
+    thread_id: str | None = None,
     checkpointer: Any = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run until the human gate or a terminal state.
 
     Returns the graph state. When a human decision is required the result

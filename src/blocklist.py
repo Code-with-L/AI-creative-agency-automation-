@@ -6,11 +6,11 @@ flagged by accident (e.g. "cure" must not match inside "secure" or "manicure").
 from __future__ import annotations
 
 import re
-from typing import List, Pattern, Tuple
+from re import Pattern
 
 # Words/phrases that must never appear in generated ad copy. This list is the
 # hard floor; a legal or brand audit may reject more, never less.
-BLOCKLIST_TERMS: List[str] = [
+BLOCKLIST_TERMS: list[str] = [
     "cure",
     "cures",
     "guarantee",
@@ -35,10 +35,10 @@ def _compile(term: str) -> Pattern[str]:
     return re.compile(r"(?<!\w)" + re.escape(term) + r"(?!\w)", re.IGNORECASE)
 
 
-_MATCHERS: List[Tuple[str, Pattern[str]]] = [(t, _compile(t)) for t in BLOCKLIST_TERMS]
+_MATCHERS: list[tuple[str, Pattern[str]]] = [(t, _compile(t)) for t in BLOCKLIST_TERMS]
 
 
-def check_blocklist(text: str) -> List[str]:
+def check_blocklist(text: str) -> list[str]:
     """Return the blocklist terms found in `text` (empty list when clean)."""
     if not text:
         return []

@@ -21,7 +21,6 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -34,9 +33,9 @@ from src.llm import LLMError, ProviderError, QuotaExceeded, call_llm  # noqa: E4
 from src.schemas import CreativeBrief  # noqa: E402
 
 
-def load_dotenv(path: Path) -> Dict[str, str]:
+def load_dotenv(path: Path) -> dict[str, str]:
     """Minimal KEY=VALUE parser. Existing environment variables always win."""
-    parsed: Dict[str, str] = {}
+    parsed: dict[str, str] = {}
     if not path.is_file():
         return parsed
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -52,7 +51,7 @@ def load_dotenv(path: Path) -> Dict[str, str]:
     return parsed
 
 
-def redact(text: str, secret: Optional[str]) -> str:
+def redact(text: str, secret: str | None) -> str:
     """Strip the API key out of anything we print."""
     if secret:
         text = text.replace(secret, "***REDACTED***")
