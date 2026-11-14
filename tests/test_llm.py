@@ -216,6 +216,88 @@ def test_response_schema_absent_by_default():
     assert "responseSchema" not in captured["json"]["generationConfig"]
 
 
+def test_unknown_provider_refuses_explicitly():
+    with pytest.raises(ProviderError, match="not implemented"):
+        call_llm("intake", SYSTEM, USER, settings=make_settings(provider="groq-native-thing"),
+                 quota=QuotaState(100), http_post=lambda *a, **k: gemini_ok("x"),
+                 trace_hook=lambda t: None)
+
+
+def test_openai_compatible_request_shape_and_success():
+    captured = {}
+
+    def poster(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs["headers"]
+        captured["json"] = kwargs["json"]
+        payload = {"choices": [{"message": {"content": "open hello"}}]}
+        return FakeResponse(200, payload=payload)
+
+    settings = make_settings(
+        provider="openai-compatible",
+        endpoint_template="https://api.groq.com/openai/v1/chat/completions",
+    )
+    result = call_llm(
+        "creative", SYSTEM, USER, settings=settings, quota=QuotaState(100),
+        http_post=poster, trace_hook=lambda t: None,
+    )
+    assert result == "open hello"
+    assert captured["url"] == "https://api.groq.com/openai/v1/chat/completions"
+    assert captured["headers"]["Authorization"] == "Bearer test-key"
+    assert captured["json"]["model"] == "test-model"
+    assert captured["json"]["messages"][0] == {"role": "system", "content": SYSTEM}
+    assert captured["json"]["messages"][-1] == {"role": "user", "content": USER}
+    assert "safetySettings" not in captured["json"]
+
+
+def test_openai_compatible_json_mode_parses_into_model():
+    ad = {"headline": "H", "body": "B", "cta": "C", "disclosures": []}
+
+    def poster(url, **kwargs):
+        assert kwargs["json"]["response_format"] == {"type": "json_object"}
+        payload = {"choices": [{"message": {"content": json.dumps(ad)}}]}
+        return FakeResponse(200, payload=payload)
+
+    settings = make_settings(
+        provider="openai-compatible",
+        endpoint_template="https://api.groq.com/openai/v1/chat/completions",
+    )
+    result = call_llm(
+        "creative", SYSTEM, USER, json_mode=True, response_model=AdCopy,
+        settings=settings, quota=QuotaState(100), http_post=poster,
+        trace_hook=lambda t: None,
+    )
+    assert isinstance(result, AdCopy)
+    assert result.headline == "H"
+
+
+def test_openai_compatible_refuses_gemini_endpoint():
+    with pytest.raises(ProviderError, match="Gemini endpoint"):
+        call_llm(
+            "creative", SYSTEM, USER,
+            settings=make_settings(provider="openai-compatible"),
+            quota=QuotaState(100),
+            http_post=lambda *a, **k: gemini_ok("x"),
+            trace_hook=lambda t: None,
+        )
+
+
+def test_openai_compatible_4xx_fails_fast():
+    def poster(url, **kwargs):
+        return FakeResponse(401, text="unauthorized")
+
+    with pytest.raises(ProviderError):
+        call_llm(
+            "creative", SYSTEM, USER,
+            settings=make_settings(
+                provider="openai-compatible",
+                endpoint_template="https://api.groq.com/openai/v1/chat/completions",
+            ),
+            quota=QuotaState(100), http_post=poster,
+            sleep_fn=lambda _s: None, trace_hook=lambda t: None,
+        )
+
+
 def test_429_then_success_retries_with_backoff():
     calls = {"n": 0}
     slept = []

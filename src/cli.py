@@ -74,7 +74,7 @@ from src.schemas import AdCopy, AuditResult, CreativeBrief  # noqa: E402
 MAX_GATES = 20
 MAX_GATES_LIVE = 5
 AUTO_APPROVED_LABEL = "AUTO_APPROVED (test mode)"
-_FALLBACK_VERSION = "0.6.0"
+_FALLBACK_VERSION = "0.7.0"
 
 
 def _version_string() -> str:

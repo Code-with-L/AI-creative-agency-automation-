@@ -6,8 +6,9 @@ Design goals:
 * Optional JSON mode with Pydantic validation.
 * A simple daily quota guard that fails gracefully instead of retrying forever.
 * A trace hook recording stage, model, latency and status.
-* Swappable provider: Gemini is implemented; anything else raises explicitly
-  (with a TODO) so we never guess another provider's API shape.
+* Swappable provider: Gemini and an OpenAI-compatible chat-completions API
+  (Groq, Together, OpenRouter, self-hosted shims, ...) are implemented;
+  anything else raises explicitly so we never guess another provider's API.
 """
 from __future__ import annotations
 
@@ -89,30 +90,14 @@ def _retry_after_seconds(headers: Any) -> float | None:
     return min(value, RETRY_AFTER_CAP_SECONDS)
 
 
-def _build_request(
+def _build_gemini_request(
     settings: Settings,
-    stage: str,
+    model: str,
     system: str,
     user: str,
     json_mode: bool,
-    response_model: type[BaseModel] | None = None,
+    response_model: type[BaseModel] | None,
 ) -> tuple[str, str, dict[str, str], dict[str, Any]]:
-    model = settings.model_for_stage(stage)
-
-    if settings.provider != "gemini":
-        # TODO: add a Groq / OpenAI-compatible adapter here. We refuse rather
-        # than guess another provider's request shape.
-        raise ProviderError(
-            f"Provider {settings.provider!r} is not implemented yet. "
-            "Add an adapter in src/llm.py."
-        )
-
-    if not model:
-        raise LLMError(
-            f"No model configured for stage {stage!r}. Set LLM_MODEL (shared) "
-            f"or LLM_MODEL_{stage.upper()} (per-stage)."
-        )
-
     url = settings.endpoint_template.format(model=model)
     headers = {
         "Content-Type": "application/json",
@@ -139,14 +124,81 @@ def _build_request(
     return model, url, headers, body
 
 
+def _build_openai_compatible_request(
+    settings: Settings,
+    model: str,
+    system: str,
+    user: str,
+    json_mode: bool,
+) -> tuple[str, str, dict[str, str], dict[str, Any]]:
+    # Any OpenAI-compatible chat-completions endpoint works (Groq, Together,
+    # OpenRouter, a self-hosted vLLM/OpenAI shim, ...). The endpoint URL must
+    # be configured explicitly; the Gemini default is never reused.
+    url = settings.endpoint_template.format(model=model)
+    if "googleapis.com" in url:
+        raise ProviderError(
+            "provider 'openai-compatible' is configured with the Gemini endpoint; "
+            "set LLM_ENDPOINT_TEMPLATE to your OpenAI-compatible chat-completions URL "
+            "(e.g. https://api.groq.com/openai/v1/chat/completions)."
+        )
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {settings.api_key or ''}",
+    }
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": user})
+    body: dict[str, Any] = {"model": model, "messages": messages}
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    return model, url, headers, body
+
+
+def _build_request(
+    settings: Settings,
+    stage: str,
+    system: str,
+    user: str,
+    json_mode: bool,
+    response_model: type[BaseModel] | None = None,
+) -> tuple[str, str, dict[str, str], dict[str, Any]]:
+    model = settings.model_for_stage(stage)
+
+    if not model:
+        raise LLMError(
+            f"No model configured for stage {stage!r}. Set LLM_MODEL (shared) "
+            f"or LLM_MODEL_{stage.upper()} (per-stage)."
+        )
+
+    if settings.provider == "gemini":
+        return _build_gemini_request(settings, model, system, user, json_mode, response_model)
+    if settings.provider == "openai-compatible":
+        return _build_openai_compatible_request(settings, model, system, user, json_mode)
+    raise ProviderError(
+        f"Provider {settings.provider!r} is not implemented yet. "
+        "Supported: 'gemini', 'openai-compatible'."
+    )
+
+
 def _extract_text(settings: Settings, payload: Any) -> str:
-    if settings.provider != "gemini":
-        raise ProviderError(f"Provider {settings.provider!r} is not implemented yet.")
-    try:
-        parts = payload["candidates"][0]["content"]["parts"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ProviderError(f"Unexpected provider response shape: {exc}") from exc
-    text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+    if settings.provider == "gemini":
+        try:
+            parts = payload["candidates"][0]["content"]["parts"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ProviderError(f"Unexpected provider response shape: {exc}") from exc
+        text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+    elif settings.provider == "openai-compatible":
+        try:
+            text = payload["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise ProviderError(f"Unexpected provider response shape: {exc}") from exc
+        text = str(text or "")
+    else:
+        raise ProviderError(
+            f"Provider {settings.provider!r} is not implemented yet. "
+            "Supported: 'gemini', 'openai-compatible'."
+        )
     if not text:
         raise ProviderError("Provider returned no text content.")
     return text
@@ -195,7 +247,13 @@ def call_llm(
     if stage not in config_mod.STAGES:
         raise LLMError(f"Unknown stage {stage!r}; expected one of {config_mod.STAGES}")
 
-    if active_settings.provider == "gemini" and not active_settings.api_key:
+    if active_settings.provider not in ("gemini", "openai-compatible"):
+        raise ProviderError(
+            f"Provider {active_settings.provider!r} is not implemented yet. "
+            "Supported: 'gemini', 'openai-compatible'."
+        )
+
+    if not active_settings.api_key:
         raise LLMError("No API key configured (set LLM_API_KEY).")
 
     model, url, headers, body = _build_request(active_settings, stage, system, user, json_mode, response_model)

@@ -1,0 +1,23 @@
+# Never ship secrets or local state in an image
+.env
+.data/
+*.jsonl
+
+# VCS / CI
+.git/
+.github/
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Dev artifacts
+tests/
+.claude/
+docs/
+PLAN.md
+CHANGELOG.md

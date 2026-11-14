@@ -77,7 +77,8 @@ markdown, audit report, and a machine-readable JSON copy.
 
 | Item | Status |
 | --- | --- |
-| Quota exhausted; live verification blocked | retry after reset |
+| Live verification blocked again (network) | Gemini endpoint unreachable/throttled from this host (SSL EOF / read timeouts; google.com and pypi.org work). Quota may be fine; the path is not. Demo + mocked suite are green; openai-compatible adapter shipped as the escape hatch |
+| Docker image unbuilt | Dockerfile + .dockerignore shipped but not built (Docker Desktop daemon not running on this machine) |
 | Working tree uncommitted (10+ files, ~3 phases of changes) | local only; not pushed |
 | Audit-prompt live anomaly (`passed`/`summary` shape) | prompt now enumerates keys; schema-validation failures retry within the hard cap; unverified live until quota resets |
 | Daily quota guard was per-process (meaningless across runs) | fixed: persisted to `.data/quota.json` (atomic writes, day rollover, fail-safe warnings) |

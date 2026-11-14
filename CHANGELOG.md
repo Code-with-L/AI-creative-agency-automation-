@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.0
+
+### Added
+- Second provider adapter: `openai-compatible` chat-completions (Groq,
+  Together, OpenRouter, self-hosted shims): Bearer auth, `response_format:
+  json_object` for JSON mode, same retry/quota/hard-cap semantics. Gemini
+  default is never reused; a misconfigured openai-compatible endpoint fails
+  loudly.
+- `Dockerfile` + `.dockerignore`: rootless image, no secrets/local state,
+  `PROMPT_DIR` override so installed deployments find the prompts.
+  (Built locally pending Docker daemon availability.)
+- `PROMPT_DIR` env override for prompt resolution in installed deployments.
+- Retry-After parsing now powers 429/5xx backoff (cap 30s).
+
+### Notes
+- Live verification remains blocked from this network: the Gemini endpoint
+  is unreachable/throttled here (SSL EOF / read timeouts), independent of
+  quota. The openai-compatible adapter is test-verified only.
+- `responseSchema` support remains experimental until a live entitlement check.
+
 ## 0.6.0
 
 ### Added

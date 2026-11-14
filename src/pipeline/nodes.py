@@ -6,6 +6,7 @@ and quota injectable. Tests pass a fake `llm`; production passes `call_llm`.
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -30,7 +31,21 @@ from .state import (
     PipelineState,
 )
 
-DEFAULT_PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts"
+
+def _default_prompt_dir() -> Path:
+    """Resolve the prompt directory.
+
+    Honours PROMPT_DIR so installed/Dockerized deployments (where the package
+    lives in site-packages) can point at the prompts, and falls back to the
+    repository layout for editable checkouts.
+    """
+    env = os.environ.get("PROMPT_DIR")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[2] / "prompts"
+
+
+DEFAULT_PROMPT_DIR = _default_prompt_dir()
 
 # Stage ids accepted by src.config.STAGES. The legal audit prompt is called
 # with the configured "audit" stage but recorded under a clearer label.

@@ -58,7 +58,7 @@ gitignored and must never be committed.
 
 | Variable | Meaning |
 | --- | --- |
-| `LLM_PROVIDER` | Provider id. Only `gemini` is implemented. |
+| `LLM_PROVIDER` | Provider id: `gemini` (default) or `openai-compatible` (Groq, Together, OpenRouter, self-hosted shims). Anything else fails loudly. |
 | `LLM_API_KEY` / `GEMINI_API_KEY` | API key. Read from the environment only. |
 | `LLM_MODEL` | Shared model id for every stage (bare id, e.g. `gemini-3.8-flash`). No default is shipped on purpose. |
 | `LLM_MODEL_INTAKE`, `LLM_MODEL_CREATIVE`, `LLM_MODEL_AUDIT`, `LLM_MODEL_BRAND_AUDIT` | Per-stage model overrides. |
@@ -86,6 +86,19 @@ python -m pytest -q
 
 Heldout fixtures under `tests/fixtures/heldout/` are for evaluation only and
 must never be used to tune prompts.
+
+## Docker
+
+A rootless-by-default image is provided; it contains no secrets and no local
+state:
+
+```powershell
+docker build -t ai-creative-agency-automation .
+docker run --rm --env-file .env ai-creative-agency-automation --help
+```
+
+It installs the package (not editable) and points `PROMPT_DIR` at the bundled
+prompts. The `.env` file is never copied into the image (see `.dockerignore`).
 
 ## Audit ledger
 
