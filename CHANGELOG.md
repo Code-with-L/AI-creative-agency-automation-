@@ -9,6 +9,8 @@
   identical to the CLI — no auto-approval in live mode.
 - Entry point `ai-creative-agency`; optional dependency extra `[web]`
   (`fastapi`, `uvicorn`).
+- `GET /health` endpoint (200 with service/version) for load-balancers and
+  uptime checks.
 - 7 web UI tests (TestClient): gate flow, edit-then-approve, reject, 422 on
   incomplete edits, 404 on unknown runs.
 

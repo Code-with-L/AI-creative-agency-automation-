@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse
 from langgraph.types import Command
 from pydantic import BaseModel, Field
 
-from src.cli import DEFAULT_RAW_INPUT, demo_deps, live_deps
+from src.cli import _FALLBACK_VERSION, DEFAULT_RAW_INPUT, demo_deps, live_deps
 from src.pipeline.graph import build_graph, new_thread_config
 from src.schemas import AdCopy
 
@@ -96,6 +96,16 @@ class DecisionRequest(BaseModel):
     headline: str | None = Field(default=None, max_length=300)
     body: str | None = Field(default=None, max_length=5_000)
     cta: str | None = Field(default=None, max_length=120)
+
+
+@app.get("/health")
+def health() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "service": "ai-creative-agency",
+        "version": _FALLBACK_VERSION,
+        "runs_tracked": len(_RUNS),
+    }
 
 
 @app.get("/", response_class=HTMLResponse)

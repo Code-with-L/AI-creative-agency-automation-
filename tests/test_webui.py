@@ -14,6 +14,12 @@ BRIEF = (
 )
 
 
+def test_health_is_ok():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
 def test_index_serves_page():
     response = client.get("/")
     assert response.status_code == 200
